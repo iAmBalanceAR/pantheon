@@ -59,7 +59,7 @@ Better spec → more powerful team. Write with precision.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/IamBalanceAR/pantheon.git
+git clone https://github.com/iAmBalanceAR/pantheon.git
 cd pantheon
 ```
 
