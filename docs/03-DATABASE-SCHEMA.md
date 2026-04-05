@@ -75,7 +75,7 @@ One row per agent. Multiple agents per project/team.
 | display_name | TEXT | e.g. "Lead Coder", "Senior Reviewer" |
 | llm_provider | TEXT | gemini or fireworks (anthropic present but unused) |
 | llm_model | TEXT | actual model string |
-| system_prompt | TEXT | stored for reference, real prompt built at runtime |
+| system_prompt | TEXT | If set (e.g. installed library skill), executor uses this **instead of** `loadSkill(role)`; otherwise built from skill file + user context |
 | status | TEXT | idle/running/waiting/completed/failed/terminated |
 | tokens_used | INTEGER | |
 | cost | DECIMAL(10,4) | |
@@ -198,39 +198,11 @@ Raw record of every prompt/response pair. The source of truth for what agents ac
 
 ---
 
-## Migration 002 (PENDING — Must Be Applied Manually)
+## Migration 002 — reports + user agent profiles
 
 File: `supabase/migrations/002_agent_profiles_and_reports.sql`
 
-**Run this in the Supabase SQL Editor before testing reports or agent customization.**
-
-```sql
--- Add report column to projects (stores the controller completion report)
-ALTER TABLE projects ADD COLUMN IF NOT EXISTS report JSONB;
-
-CREATE TABLE IF NOT EXISTS user_agent_profiles (
-  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  role           TEXT NOT NULL,
-  custom_context TEXT,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, role)
-);
-
-CREATE OR REPLACE TRIGGER trg_agent_profiles_updated_at
-  BEFORE UPDATE ON user_agent_profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-ALTER TABLE user_agent_profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "user_own_select" ON user_agent_profiles FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "user_own_insert" ON user_agent_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "user_own_update" ON user_agent_profiles FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "user_own_delete" ON user_agent_profiles FOR DELETE USING (auth.uid() = user_id);
-
-CREATE INDEX IF NOT EXISTS idx_agent_profiles_user ON user_agent_profiles(user_id);
-```
+Adds `projects.report` (JSONB) and **`user_agent_profiles`**: per-user `custom_context` per core `role`, appended into each skill’s `## User Context` section at runtime.
 
 ### Table: `user_agent_profiles` (Migration 002)
 
@@ -244,15 +216,15 @@ Allows users to append custom context to specific agent roles for all their proj
 | custom_context | TEXT | appended to base prompt at runtime |
 | created_at / updated_at | TIMESTAMPTZ | |
 
-The base prompt is **immutable** — skills live in `src/lib/agents/skills/*.md`. Custom context is **appended** at runtime. One row per user per role (UNIQUE constraint).
+The base prompt is **immutable** in the repo — skills live in `src/lib/agents/skills/*.md`. Custom context is **injected** at runtime. One row per user per role (UNIQUE constraint).
 
 ---
 
-## Migration 003 (PENDING — Apply for deliverable files)
+## Migration 003 — project deliverable files
 
 File: `supabase/migrations/003_project_files.sql`
 
-**Run in the Supabase SQL Editor** so agent output in `<file path="…">` blocks is extracted into browsable rows after each task completes.
+Stores agent output in `<file path="…">` blocks as browsable rows after each task completes.
 
 ### Table: `project_files`
 
@@ -276,6 +248,41 @@ Unique on `(project_id, path)` — later tasks **overwrite** the same path. RLS:
 2. If no row: run the full `003_project_files.sql` script (includes `NOTIFY pgrst, 'reload schema';` at the end).
 3. If the table exists but the error persists, run only: `NOTIFY pgrst, 'reload schema';`  
    Or in the Dashboard: **Project Settings → API → Reload schema** (wording may vary by Supabase version).
+
+---
+
+## Migration 004 — Realtime: `projects`
+
+File: `supabase/migrations/004_realtime_projects.sql`
+
+Adds `public.projects` to the `supabase_realtime` publication so the project overview page can subscribe to status, `cost_used`, `tokens_used`, etc. Without this, only child tables (tasks, sprints, …) would update live.
+
+---
+
+## Migration 005 — installed Skills Library rows
+
+File: `supabase/migrations/005_user_installed_skills.sql`
+
+### Table: `user_installed_skills`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| user_id | UUID FK → auth.users | cascade delete |
+| library_id | TEXT | stable id matching `skills-library/{id}.md` |
+| display_name, icon, category, description | TEXT | copied from catalog at install time |
+| skill_content | TEXT | full markdown body; user-editable after install |
+| created_at / updated_at | TIMESTAMPTZ | |
+
+UNIQUE `(user_id, library_id)`. RLS: users only see their own rows (`own_skills` policy).
+
+When the Controller assigns a task to a `library_id` role, project creation stores the agent as `role = 'custom'` with `system_prompt` set from this content. See `04-AGENT-SYSTEM.md`.
+
+---
+
+## Consolidated schema (open source / greenfield)
+
+For a **single paste** into the SQL Editor, use `supabase/schema.sql` (kept in sync with migrations **001–005**). The numbered `migrations/` files remain the historical, reviewable sequence.
 
 ---
 

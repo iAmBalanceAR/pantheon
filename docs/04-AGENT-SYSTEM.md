@@ -24,9 +24,11 @@ Users can append custom context via their agent profile (stored in `user_agent_p
 
 **File**: `src/lib/agents/controller.ts`
 
-### analyzeSpec(spec: string)
+### analyzeSpec(spec, installedSkills?)
 
-The most important function in the system. Called once per project creation.
+The most important function in the system. Called once per project creation from `POST /api/projects`.
+
+Optional second argument: `InstalledSkillRef[]` — each `{ library_id, display_name, description }` for skills the user has installed from the Skills Library. When non-empty, the Controller prompt’s **VALID ROLES** list is extended with those `library_id` strings and a short catalog section is appended so the model can assign tasks to specialists (e.g. `mobile-developer`, `copywriter`).
 
 1. Sends the user's spec to Gemini with `jsonMode: true`
 2. Returns a structured `SpecAnalysis` object:
@@ -66,10 +68,11 @@ The `executeAgentTask` function is called for every task in every sprint. This i
 
 1. **Sanitize model**: `sanitizeModel(agent.llm_provider, agent.llm_model)` — remaps anything invalid
 2. **Build system prompt**:
-   - Calls `loadSkill(agent.role)` — returns the cached skill markdown body from `skills/*.md`
-   - Fetches `custom_context` from `user_agent_profiles` for this user + role
-   - Calls `injectUserContext(skillBody, customCtx)` — slots custom context into the `## User Context` section (or removes the section cleanly if empty)
-   - Appends project context block: name, stack JSON, spec
+   - **If `agent.system_prompt` is set** (installed library skill on a `custom` row), that string is the skill body; otherwise `loadSkill(agent.role)` from `skills/*.md`.
+   - Fetches `custom_context` from `user_agent_profiles` for `(user_id, agent.role)`. Installed library agents are stored with **`role = 'custom'`**, so they share the same optional `custom` profile row as any other custom agent.
+   - Calls `injectUserContext(skillBody, customCtx)` — slots custom context into the `## User Context` section (or removes the section cleanly if empty).
+   - Appends project context block: name, stack JSON, spec.
+   - Task user message includes `buildTaskPrompt()` global guidance: relative `href`/`src` must match `<file>` blocks; prefer hotlinked `https://` stock images for raster photos.
 3. **Build message history**:
    - Previous messages from `chat_messages` for this project (last N messages)
    - The task description as the final user message
@@ -81,16 +84,18 @@ The `executeAgentTask` function is called for every task in every sprint. This i
    - Update `agents.tokens_used` and `agents.cost`
    - Call `recordUsage()` on the Banker
 
-### File Output Parsing (Partial Implementation)
+### File output parsing and deliverable checks
 
-The Coder and Custom agent base prompts instruct agents to use a structured file format:
+The Coder, Custom, and library skill prompts instruct agents to use:
 ```
 <file path="relative/path/to/file.ext">
 ...complete file contents...
 </file>
 ```
 
-After each successful task, **`persistTaskOutputFiles()`** parses these blocks and **upserts `project_files`** (Postgres; requires migration **003**). Full output remains in `tasks.result` and `execution_log`; the **Files** tab and zip export expose deliverables. The Researcher skill may emit `<file>` for standalone documents.
+After each successful task, **`persistTaskOutputFiles()`** parses these blocks and **upserts `project_files`** (migration **003**). It then runs **`analyzeDeliverableConsistency()`** (`deliverable-refs.ts`) on the extracted set: flags HTML that references missing sibling files or CSS/JS files that nothing links to. Issues are surfaced as **system** chat messages so the user can re-run if needed.
+
+Full output remains in `tasks.result` and `execution_log`; the **Files** tab and zip export expose deliverables.
 
 ---
 
@@ -199,14 +204,25 @@ Server-side module (uses `fs`). All 9 skill files are read and cached at module 
 - `getSkillDefinitions()` — full `RoleDefinition[]` including parsed frontmatter and body
 - `ROLE_PROMPT_MAP`, `ROLE_DEFINITIONS`, `getRoleDefinition()` — backward-compatible exports
 
-### Why Skill Files
+### Why skill files
 
 - **Prompts are content, not code.** Editing a skill file doesn't require touching TypeScript or triggering a build.
 - **Structured context injection.** User customizations slot into a designated section rather than being appended as a raw string.
 - **Version control clarity.** A git diff on `coder.md` is immediately readable.
-- **Future-ready.** Skill files are publishable units — the Agent Marketplace roadmap item depends on this architecture.
 
-### Editing Skills
+### Skills Library (installable specialists)
+
+**Paths:** `src/lib/agents/skills-library/*.md` + `_index.ts` (metadata).
+
+These are **bundled** markdown skills (14 roles across development / creative / analysis / process). They are **not** loaded as core `VALID_ROLES` in `skill-loader.ts`. Instead:
+
+- `GET /api/agents/library` — catalog JSON
+- `GET /api/agents/library/[id]` — full body for preview/install
+- `GET/POST/DELETE /api/agents/skills` — persists installs in **`user_installed_skills`** (migration **005**)
+
+On **`POST /api/projects`**, installed skills are passed into `analyzeSpec()`. Team members whose `role` matches a `library_id` are inserted as DB `agents` with `role = 'custom'` and `system_prompt` set to the stored `skill_content`. Task `role` in sprints can still reference the `library_id` for assignment; the create route maps those roles to the correct agent row.
+
+### Editing skills
 
 To change an agent's behavior, edit the corresponding `.md` file in `src/lib/agents/skills/`. The skill loader caches on module load, so in development a server restart picks up changes. On Vercel, each deployment bundles the current skill files (via `outputFileTracingIncludes` in `next.config.mjs`).
 
@@ -283,16 +299,19 @@ The conflict detection logic uses keyword matching on task titles/descriptions. 
 
 ---
 
-## User-Customizable Agent Prompts
+## User-customizable agent prompts and roster UI
 
-**How it works**:
-1. User opens Settings → Agent Roster (`/settings/agents`)
-2. The page fetches `GET /api/settings/roles` → returns all 9 skill definitions (parsed from `.md` files)
-3. Each card shows the immutable base skill (read-only, collapsible markdown view)
-4. User types custom context in the textarea — saved via `POST /api/settings/agents` → upserts `user_agent_profiles` row
-5. At runtime: `executor.ts` calls `fetchUserCustomContext(userId, role)` → passes context to `injectUserContext()` which slots it into the skill's `## User Context` section
+**Core roster (nine roles)**  
+1. User opens **Agents** in the main nav (`/agents`) — `settings/agents` redirects here.
+2. `GET /api/settings/roles` returns all nine skill definitions from `skills/*.md`.
+3. Collapsible base skill (read-only) + textarea for `custom_context` → `POST /api/settings/agents` → `user_agent_profiles`.
 
-The custom context is injected into a designated placeholder in the skill file (`<!-- USER_CONTEXT_PLACEHOLDER -->`). It cannot override the base skill — it only populates the User Context section. Example use cases:
+**Skills Library (same page)**  
+Browse/install/edit/remove specialist skills; data lives in `user_installed_skills`. Accordion sections collapse long-form guidance so roster stays visible.
+
+4. At runtime: `executor.ts` loads `custom_context` for `agent.role` and calls `injectUserContext()` so text replaces `<!-- USER_CONTEXT_PLACEHOLDER -->` in the skill body.
+
+Custom context **does not replace** the base skill file — it only fills the User Context section (or the same placeholder inside an installed library skill). Example use cases:
 - "For the Coder agent: always use TypeScript strict mode and prefer functional patterns"
 - "For the Reviewer agent: we are HIPAA-compliant — flag any PHI handling"
 - "For the Controller agent: our team prefers Next.js 14 with App Router"

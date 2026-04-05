@@ -66,7 +66,7 @@ A complete inventory of what has been built, file by file.
 ### `src/components/layout/navbar.tsx`
 - 52px horizontal top navigation bar
 - "PANTHEON" logo with lime dot
-- Links: Projects, Help, Settings
+- Links: Projects, **Agents**, Settings, Help
 - Active state detection via `usePathname()`
 - No sidebar — replaced the entire previous sidebar navigation
 
@@ -165,9 +165,9 @@ A complete inventory of what has been built, file by file.
 - `CreationModal` overlay on submit: phase steps + progress bar; then redirect
 
 ### `src/app/(dashboard)/projects/[id]/page.tsx` (Project Overview)
-- Client component with Supabase Realtime for live data
+- Client component with Supabase Realtime (`projects`, `agents`, `sprints`, `tasks`) + debounced refetch; **polling fallback** every ~2.5s while running
 - Run control section: status, sprint count, Start/Continue button
-- `RunTicker` inline component (appears when running): phase, sprint progress, scrolling log lines
+- `RunTicker` inline component (appears when running): phase, sprint progress, scrolling log lines; reflects **chained** run response (`sprints_completed`, `total_tasks_run`)
 - **Rerun project**: `AlertDialog` confirmation → `POST /api/projects/[id]/rerun` when status is completed / failed / paused / reviewing
 - Sprint list with status badges and goal text
 - Active agents section
@@ -207,19 +207,16 @@ A complete inventory of what has been built, file by file.
 - **Download all (.zip)** → `/api/projects/[id]/files/zip` (requires migration `003_project_files.sql`)
 
 ### `src/app/(dashboard)/settings/page.tsx`
-- Platform settings
-- API key management
-- Default model/provider assignments
-- Prominent link/button to Agent Roster
+- Platform settings: API key status, default model reference, controller profiles link
+- **Platform** tab toggles persist in **browser `localStorage`** (`pantheon:settings:*` keys) — not yet wired to server execution
 
-### `src/app/(dashboard)/settings/agents/page.tsx` (Agent Roster)
-- Fetches role definitions from `GET /api/settings/roles` on mount (server reads skill files, sends JSON to client)
-- Fetches user profiles from `GET /api/settings/agents` in parallel on mount
-- Skeleton loaders shown while fetching
-- Role cards: icon, display name, description
-- Collapsible "Base Skill" section (read-only, shows full skill markdown)
-- Textarea for `custom_context` — injected into the skill's `## User Context` section at runtime
-- Saves via `POST /api/settings/agents`
+### `src/app/(dashboard)/agents/page.tsx` (Agents — main nav)
+- **Skills Library**: browse bundled `skills-library` skills by category; preview/install/uninstall; **My skills** tab with full-body editor; data in `user_installed_skills` (migration **005**)
+- **Core agent roster**: same as former settings page — `GET /api/settings/roles` + `GET /api/settings/agents`; accordions for "How to get the best results" / "Quick tips" (collapsed by default, CSS grid height animation)
+- Saves roster context via `POST /api/settings/agents`
+
+### `src/app/(dashboard)/settings/agents/page.tsx`
+- Redirects to `/agents`
 
 ---
 
@@ -227,8 +224,9 @@ A complete inventory of what has been built, file by file.
 
 ### `POST /api/projects`
 - Accepts: `{ spec: string, budget?: number }`
-- Calls `analyzeSpec(spec)` via Controller Agent
-- Creates: project, team, agents (sanitized), sprints, tasks
+- Loads `user_installed_skills` for the user → `analyzeSpec(spec, installedSkills?)`
+- Creates: project, team, agents (sanitized); **library skill roles** → `agents.role = 'custom'` + `system_prompt` from installed content; task→agent mapping includes `library_id` keys
+- Creates sprints, tasks
 - Returns: `{ id: project.id }`
 - `maxDuration = 300` (5-minute serverless timeout)
 
@@ -242,12 +240,21 @@ A complete inventory of what has been built, file by file.
 - Deletes project and all related data (cascades in DB)
 
 ### `POST /api/projects/[id]/run`
-- Finds next pending sprint
-- Executes all tasks sequentially via `executeAgentTask()`
+- **Chains** multiple pending sprints in one request (bounded cap, e.g. 30); posts system messages when auto-advancing
+- Per sprint: executes all tasks sequentially via `executeAgentTask()`
 - Banker checks (warn + hard stop)
 - On last sprint complete: calls `generateCompletionReport()`
-- Returns: `{ done: boolean, sprint_number, tasks_run, any_failed }`
+- Returns: `{ done, sprint_number, tasks_run, sprints_completed, total_tasks_run, any_failed, … }`
 - `maxDuration = 300`
+
+### `GET /api/agents/library`
+- Returns JSON array of bundled skills-library metadata (`_index.ts`)
+
+### `GET /api/agents/library/[id]`
+- Returns metadata + markdown **body** (frontmatter stripped) for one skill
+
+### `GET|POST|DELETE /api/agents/skills`
+- CRUD for `user_installed_skills` (authenticated user)
 
 ### `POST /api/projects/[id]/report`
 - Manually triggers `generateCompletionReport()`
@@ -288,7 +295,7 @@ A complete inventory of what has been built, file by file.
 ## Agent System
 
 ### `src/lib/agents/controller.ts`
-- `analyzeSpec()` — full project planning
+- `analyzeSpec(spec, installedSkills?)` — full project planning; extends VALID ROLES in prompt when skills installed
 - `decomposeTask()` — per-task implementation instructions
 - `shouldSpawnSubTeam()` — spawn decision
 - Robust JSON extraction (jsonMode → fence → greedy)
@@ -309,10 +316,14 @@ A complete inventory of what has been built, file by file.
 - Saves to `projects.report`
 
 ### `src/lib/agents/skills/*.md` (9 files)
-- One skill file per agent role: `controller`, `coder`, `architect`, `reviewer`, `researcher`, `auditor`, `banker`, `mediator`, `custom`
+- One skill file per **core** agent role
 - YAML frontmatter: `role`, `display_name`, `description`, `icon`
 - Sections: Identity, Responsibilities, Behavioral Constraints, Output Format, User Context
-- `<!-- USER_CONTEXT_PLACEHOLDER -->` marks the structured injection point for user custom context
+- Coder/custom prompts include multi-file deliverable + hotlinked image guidance (aligned with `buildTaskPrompt()` in executor)
+
+### `src/lib/agents/skills-library/*.md` + `_index.ts`
+- Bundled **installable** specialist skills (14); metadata in `_index.ts`, bodies on disk
+- No DB until user installs via `/agents`
 
 ### `src/lib/agents/skill-loader.ts`
 - Server-side only — uses `fs.readFileSync`
@@ -337,17 +348,21 @@ A complete inventory of what has been built, file by file.
 ### `src/lib/engine/executor.ts`
 - `executeAgentTask()` — the hot path for every task
 - Sanitizes model via `sanitizeModel()`
-- Builds system prompt: `loadSkill(role)` → `injectUserContext(body, customCtx)` → append project context block
+- Builds system prompt: `agent.system_prompt ?? loadSkill(agent.role)` → `injectUserContext` → append project context
+- User message: `buildTaskPrompt()` — global web asset + image hotlink rules
 - Loads last 10 chat messages as history, calls LLM
 - Saves to tasks, execution_log, chat_messages
-- After each successful task: `persistTaskOutputFiles()` — parses `<file path="…">` blocks into `project_files` (upsert by project + path)
+- After each successful task: `persistTaskOutputFiles()` — parses `<file>` blocks; **consistency issues** → system chat messages
 - Calls Banker record and check
 
 ### `src/lib/engine/file-extractor.ts`
 - `extractFileBlocksFromOutput()` / `normalizeDeliverablePath()` — safe relative paths, no `..` escape
 
 ### `src/lib/engine/persist-task-files.ts`
-- `persistTaskOutputFiles()` — upserts extracted files for a task
+- `persistTaskOutputFiles()` — upserts extracted files; returns `{ written, consistencyIssues }`
+
+### `src/lib/engine/deliverable-refs.ts`
+- `analyzeDeliverableConsistency()` — cross-checks HTML `href`/`src` vs extracted `<file>` paths; flags unlinked CSS/JS
 
 ### `src/lib/engine/conflict-detector.ts`
 - Detects task overlap between agents
@@ -390,6 +405,23 @@ A complete inventory of what has been built, file by file.
 - `update_updated_at()` trigger function
 
 ### `supabase/migrations/002_agent_profiles_and_reports.sql`
-- ⚠️ PENDING — must be applied manually in Supabase SQL Editor
 - Adds `report JSONB` column to `projects`
 - Creates `user_agent_profiles` table with RLS
+
+### `supabase/migrations/003_project_files.sql`
+- `project_files` table + RLS + indexes; deliverables / Files tab / zip
+
+### `supabase/migrations/004_realtime_projects.sql`
+- Adds `public.projects` to `supabase_realtime` publication
+
+### `supabase/migrations/005_user_installed_skills.sql`
+- `user_installed_skills` + RLS + `updated_at` trigger
+
+### `supabase/schema.sql`
+- **Consolidated** idempotent script (001–005 equivalent) for one-shot greenfield setup; used by open-source README
+
+---
+
+## Documentation refresh (v0.9.0-beta era)
+
+The following docs were updated to match shipping behavior: `00-INDEX.md`, `02-ARCHITECTURE.md`, `03-DATABASE-SCHEMA.md`, `04-AGENT-SYSTEM.md`, `06-COMPLETED-WORK.md` (this file).

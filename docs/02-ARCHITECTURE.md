@@ -39,9 +39,10 @@ pantheon/
 │   │   │   │       ├── report/page.tsx ← completion report UI
 │   │   │   │       ├── settings/page.tsx ← project settings (name, budget, model overrides)
 │   │   │   │       └── error.tsx     ← project-scoped error boundary
+│   │   │   ├── agents/page.tsx    ← Agent Roster + Skills Library (main nav); `/settings/agents` redirects here
 │   │   │   ├── settings/
-│   │   │   │   ├── page.tsx       ← platform settings (API keys, default models)
-│   │   │   │   ├── agents/page.tsx ← Agent Roster — view skill content, add custom context
+│   │   │   │   ├── page.tsx       ← platform settings (API keys, default models; Platform toggles persist in localStorage)
+│   │   │   │   ├── agents/page.tsx ← redirect → `/agents`
 │   │   │   │   └── profiles/page.tsx ← Controller Profiles
 │   │   │   ├── help/
 │   │   │   │   ├── page.tsx        ← Help hub — lists user guides
@@ -54,10 +55,14 @@ pantheon/
 │   │   │   │   ├── route.ts       ← GET list, POST create (runs controller analysis)
 │   │   │   │   └── [id]/
 │   │   │   │       ├── route.ts   ← GET, PATCH, DELETE single project
-│   │   │   │       ├── run/route.ts ← POST — executes next sprint (the orchestrator)
+│   │   │   │       ├── run/route.ts ← POST — chains pending sprints in one request (cap); auto-advances sprints
 │   │   │   │       ├── rerun/route.ts ← POST — reset sprints/tasks/usage/files; rerun from start
 │   │   │   │       ├── report/route.ts ← POST — manually regenerate completion report
 │   │   │   │       └── files/       ← route.ts (list), zip/route.ts, by-id/[fileId]/route.ts
+│   │   │   ├── agents/
+│   │   │   │   ├── library/route.ts      ← GET catalog of bundled skills-library metadata
+│   │   │   │   ├── library/[id]/route.ts ← GET one skill body (markdown body, no frontmatter)
+│   │   │   │   └── skills/route.ts       ← GET/POST/DELETE user_installed_skills
 │   │   │   ├── agents/[id]/execute/route.ts ← direct agent execution (not sprint-based)
 │   │   │   ├── auditor/route.ts   ← auditor sprint review
 │   │   │   └── settings/
@@ -72,7 +77,7 @@ pantheon/
 │   │   │   ├── help-markdown.tsx  ← client: react-markdown + Obsidian Electric styles
 │   │   │   └── help-assistant-bubble.tsx ← Quick help: pill + slide-up panel, sessionStorage, duplicate guard
 │   │   ├── layout/
-│   │   │   ├── navbar.tsx         ← top navigation bar (52px, lime logo, Projects / Help / Settings)
+│   │   │   ├── navbar.tsx         ← top navigation bar (52px, lime logo, Projects / Agents / Settings / Help)
 │   │   │   └── project-header.tsx ← project page header (name, tabs, pause/resume button)
 │   │   └── ui/
 │   │       ├── button.tsx         ← shadcn button
@@ -85,17 +90,10 @@ pantheon/
 │   │   │   ├── load-help.ts       ← listHelpArticles(), getHelpArticle(slug)
 │   │   │   └── assistant-knowledge.ts ← curated keywords + matchAssistantMessage() (no LLM)
 │   │   ├── agents/
-│   │   │   ├── skills/            ← Agent Skill files — one .md per role (source of truth)
-│   │   │   │   ├── controller.md
-│   │   │   │   ├── coder.md
-│   │   │   │   ├── architect.md
-│   │   │   │   ├── reviewer.md
-│   │   │   │   ├── researcher.md
-│   │   │   │   ├── auditor.md
-│   │   │   │   ├── banker.md
-│   │   │   │   ├── mediator.md
-│   │   │   │   └── custom.md
-│   │   │   ├── skill-loader.ts    ← reads/caches skill files, injects user context
+│   │   │   ├── skills/            ← Core agent skills — one .md per built-in role (source of truth)
+│   │   │   │   └── … (controller, coder, architect, …)
+│   │   │   ├── skills-library/    ← Bundled installable specialist skills (.md + _index.ts)
+│   │   │   ├── skill-loader.ts    ← reads/caches core skill files, injects user context
 │   │   │   ├── role-prompts.ts    ← deprecated shim — re-exports from skill-loader.ts
 │   │   │   ├── controller.ts      ← Controller Agent: analyzeSpec(), SPEC_SCORING_PROMPT
 │   │   │   ├── auditor.ts         ← Auditor Agent logic
@@ -107,7 +105,8 @@ pantheon/
 │   │   ├── engine/
 │   │   │   ├── executor.ts        ← executeAgentTask(): core agent call + persistTaskOutputFiles()
 │   │   │   ├── file-extractor.ts  ← parse <file path="…"> blocks from task output
-│   │   │   ├── persist-task-files.ts ← upsert project_files after each task
+│   │   │   ├── persist-task-files.ts ← upsert project_files; runs deliverable consistency check
+│   │   │   ├── deliverable-refs.ts ← HTML href/src vs extracted `<file>` consistency
 │   │   │   └── conflict-detector.ts ← detects agent task overlaps
 │   │   ├── llm/
 │   │   │   ├── client.ts          ← callLLM() unified interface, MODEL_COSTS, estimateCost()
@@ -120,10 +119,10 @@ pantheon/
 │   │   └── utils.ts               ← cn() classname utility
 │   ├── types/index.ts             ← Database type definitions, all table row types
 │   └── middleware.ts              ← Supabase auth session refresh + route protection
-├── supabase/migrations/
-│   ├── 001_initial.sql            ← full schema (run ✅)
-│   ├── 002_agent_profiles_and_reports.sql ← reports + user_agent_profiles (apply in Supabase)
-│   └── 003_project_files.sql     ← deliverables table + RLS + schema reload notify (apply in Supabase)
+├── supabase/
+│   ├── schema.sql                 ← consolidated 001–005 (single paste for new projects)
+│   └── migrations/
+│       ├── 001_initial.sql … 005_user_installed_skills.sql
 └── .env.local                     ← API keys and model configuration
 ```
 
@@ -132,11 +131,11 @@ pantheon/
 ```
 User submits spec
   → POST /api/projects
-    → analyzeSpec() calls Controller Agent (Gemini 2.5 Flash, jsonMode:true)
+    → loads user_installed_skills for owner → analyzeSpec(spec, skills?) calls Controller (Gemini, jsonMode:true)
     → returns structured JSON: { score, tier, team[], sprints[], tasks[] }
     → INSERT projects row
     → INSERT teams row
-    → INSERT agents rows (sanitized through model-sanitizer)
+    → INSERT agents rows (sanitized); library skill roles → `role='custom'` + `system_prompt` from install
     → INSERT sprints rows
     → INSERT tasks rows (with agent_id assigned by role matching)
     → returns { id: project.id }
@@ -147,8 +146,8 @@ User submits spec
 
 ```
 User clicks "Start project"
-  → frontend loop: POST /api/projects/[id]/run (repeats until done/paused)
-    → find next pending sprint
+  → POST /api/projects/[id]/run (often completes multiple sprints in one HTTP request)
+    → loop: find next pending sprint (until cap or project done)
     → activate project + sprint
     → load tasks ordered by priority
     → for each task:
@@ -156,8 +155,8 @@ User clicks "Start project"
         → check banker hard-stop
         → find assigned agent (by agent_id, fallback role, fallback coder)
         → sanitizeModel(agent.llm_provider, agent.llm_model)
-        → loadSkill(agent.role) from skill-loader (cached, no I/O)
-        → fetch user custom context from user_agent_profiles
+        → skill body = agent.system_prompt ?? loadSkill(agent.role)
+        → fetch user custom context from user_agent_profiles (keyed by agent.role)
         → injectUserContext(skill, customCtx) → structured slot injection
         → build final system prompt = skill + project context
         → callLLM() → callGemini() or callFireworks()
@@ -166,9 +165,9 @@ User clicks "Start project"
         → save to execution_log
         → post to chat_messages
         → recordUsage() via Banker
-    → mark sprint completed/review
+    → mark sprint completed/review; if more pending sprints, continue loop (system chat: auto-advance)
     → if no more sprints: mark project completed, call generateCompletionReport()
-    → returns { done, sprint_number, tasks_run, any_failed }
+    → returns { done, sprint_number, tasks_run, sprints_completed, total_tasks_run, any_failed, … }
 ```
 
 ## Project rerun (reset)
@@ -177,11 +176,12 @@ When status is **completed**, **failed**, **paused**, or **reviewing** (and not 
 
 ## Real-time Updates
 
-All project pages subscribe to Supabase Realtime channels:
-- `projects` table — status, cost_used, tokens_used (drives the header and run ticker)
-- `agents` table — status per agent
-- `sprints` table — status per sprint
-- `chat_messages` table — new messages in the feed
+Project overview and related pages subscribe to Supabase Realtime on:
+- `projects` — status, cost_used, tokens_used (requires `projects` in `supabase_realtime`; see migration **004** / `schema.sql`)
+- `agents`, `sprints`, `tasks` — live task/sprint progress
+- `chat_messages` — feed
+
+The overview also polls while `running` as a fallback if Realtime is delayed.
 
 ## Key Constraints
 

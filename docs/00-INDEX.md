@@ -8,7 +8,7 @@ This folder contains everything a new agent needs to understand, continue, and e
 |------|---------------|
 | `01-PROJECT-OVERVIEW.md` | What Pantheon is, the vision, the core idea |
 | `02-ARCHITECTURE.md` | Tech stack, folder structure, data flow |
-| `03-DATABASE-SCHEMA.md` | Full Supabase schema, RLS, all tables, pending migrations |
+| `03-DATABASE-SCHEMA.md` | Full Supabase schema, RLS, all tables, migrations 001–005, `schema.sql` |
 | `04-AGENT-SYSTEM.md` | How the agent pipeline works end-to-end |
 | `05-UI-DESIGN-SYSTEM.md` | Design language, color tokens, component conventions |
 | `06-COMPLETED-WORK.md` | Everything built so far, file by file |
@@ -29,17 +29,24 @@ These features are **only mounted when logged in** (inside `src/app/(dashboard)/
 
 See also: `06-COMPLETED-WORK.md` (file inventory), `05-UI-DESIGN-SYSTEM.md` (nav + Quick help UX), `08-ROADMAP.md` (completed Help work called out).
 
-## Critical: Pending Database Migrations
+## Database setup (Supabase)
 
-Apply SQL from `03-DATABASE-SCHEMA.md` in the Supabase SQL **Editor** as needed:
+**Fast path (new project):** run the entire `supabase/schema.sql` file once in the Supabase SQL Editor. It is idempotent and includes all tables, RLS, indexes, and Realtime publication entries through **005**.
 
-| Migration | Unblocks |
-|-----------|----------|
-| **002** (`002_agent_profiles_and_reports.sql`) | Completion reports (`projects.report`), Agent Roster (`user_agent_profiles`) |
-| **003** (`003_project_files.sql`) | **Files** tab, `<file>` extraction into `project_files`, zip download. Ends with `NOTIFY pgrst, 'reload schema';` |
+**Incremental path:** apply numbered files in order under `supabase/migrations/` (`001` … `005`). See `03-DATABASE-SCHEMA.md` for table details.
 
-**Deliverables & rerun** (no extra migration): agent output → `project_files`; **Rerun project** on overview resets work and calls `POST /api/projects/[id]/rerun`. See `06-COMPLETED-WORK.md`.
+| Migration | Purpose |
+|-----------|---------|
+| **001** | Core schema: projects, teams, agents, sprints, tasks, chat, conflicts, budget_events, execution_log + RLS |
+| **002** | `projects.report`, `user_agent_profiles` |
+| **003** | `project_files` (deliverables / Files tab / zip) |
+| **004** | Adds `public.projects` to `supabase_realtime` (live overview updates) |
+| **005** | `user_installed_skills` (Skills Library installs) |
 
-## Agent Skill Files
+**Deliverables & rerun:** agent output → `project_files` via `persist-task-files.ts` + `deliverable-refs.ts` consistency checks; **Rerun project** calls `POST /api/projects/[id]/rerun`. See `06-COMPLETED-WORK.md`.
 
-Agent identities live in `src/lib/agents/skills/*.md` — one file per role. **Do not delete or rename these files.** The skill loader reads them at startup and the executor depends on them for every task. If you edit a skill file, restart the dev server to pick up changes. See `04-AGENT-SYSTEM.md` for the full skill system architecture.
+## Agent skill files (bundled)
+
+**Core roles** — `src/lib/agents/skills/*.md` (nine files). The skill loader reads and caches them at server startup. Do not delete or rename these files. Restart the dev server after edits in development.
+
+**Skills Library** — `src/lib/agents/skills-library/*.md` (specialist templates) + `_index.ts` (catalog metadata). Shipped with the app; no external registry. Users **install** copies into `user_installed_skills` via `/agents`. See `04-AGENT-SYSTEM.md`.
