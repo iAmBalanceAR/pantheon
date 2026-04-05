@@ -1,0 +1,268 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /*
+     * PANTHEON — OBSIDIAN ELECTRIC
+     *
+     * Monochrome foundation. One accent color. That's it.
+     * The brand color doesn't decorate the UI — it IS the signal.
+     * Everything else gets out of the way.
+     *
+     * Primary: hsl(73, 92%, 56%) — Electric Lime
+     * Nobody in the AI space owns this color. Now we do.
+     */
+
+    --background:          0  0% 5%;     /* #0D0D0D — true near-black */
+    --foreground:          0  0% 96%;    /* #F5F5F5 — near white      */
+
+    --card:                0  0% 8%;     /* #141414 — card surface    */
+    --card-foreground:     0  0% 96%;
+
+    --popover:             0  0% 9%;     /* #171717 */
+    --popover-foreground:  0  0% 96%;
+
+    --primary:             73 92% 56%;   /* #CBF43A — electric lime   */
+    --primary-foreground:  0  0% 5%;     /* dark text on lime         */
+
+    --secondary:           0  0% 12%;    /* #1F1F1F */
+    --secondary-foreground:0  0% 65%;    /* #A6A6A6 */
+
+    --muted:               0  0% 10%;    /* #1A1A1A */
+    --muted-foreground:    0  0% 44%;    /* #707070 */
+
+    --accent:              73 92% 56%;   /* same as primary           */
+    --accent-foreground:   0  0% 5%;
+
+    --destructive:         0  70% 54%;   /* #E03045 */
+    --destructive-foreground: 0 0% 100%;
+
+    --border:              0  0% 13%;    /* #212121 */
+    --input:               0  0% 10%;    /* #1A1A1A */
+    --ring:                73 92% 56%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  h1, h2, h3, h4 {
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TYPOGRAPHY SCALE
+   Design principle: hierarchy through SIZE, not decoration
+───────────────────────────────────────────────────────────────────────── */
+.text-hero {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.text-display {
+  font-size: clamp(1.25rem, 2.5vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.text-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.text-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.text-mono {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+  font-size: 0.75rem;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LIME GLOW — the ONE brand signal
+───────────────────────────────────────────────────────────────────────── */
+.glow-lime {
+  box-shadow: 0 0 0 1px hsl(73 92% 56% / 0.4),
+              0 0 16px hsl(73 92% 56% / 0.25);
+}
+.glow-lime-lg {
+  box-shadow: 0 0 0 1px hsl(73 92% 56% / 0.5),
+              0 0 30px hsl(73 92% 56% / 0.35),
+              0 0 60px hsl(73 92% 56% / 0.15);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SEPARATORS — newspaper lines, not boxes
+───────────────────────────────────────────────────────────────────────── */
+.sep {
+  height: 1px;
+  background: hsl(var(--border));
+}
+.sep-fade {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--border)) 20%, hsl(var(--border)) 80%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   STATUS COLORS
+───────────────────────────────────────────────────────────────────────── */
+.status-running   { color: #4ade80; }
+.status-scoping   { color: #facc15; }
+.status-paused    { color: #525252; }
+.status-reviewing { color: #60a5fa; }
+.status-complete  { color: #22c55e; }
+.status-failed    { color: #f87171; }
+
+.dot-running   { background: #4ade80; }
+.dot-scoping   { background: #facc15; }
+.dot-paused    { background: #525252; }
+.dot-reviewing { background: #60a5fa; }
+.dot-complete  { background: #22c55e; }
+.dot-failed    { background: #f87171; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ANIMATIONS — fast (150ms), purposeful, not decorative
+───────────────────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+@keyframes live-ping {
+  0%   { transform: scale(1);    opacity: 0.7; }
+  100% { transform: scale(2.5);  opacity: 0;   }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.animate-fade-up   { animation: fadeUp 0.2s ease-out; }
+.animate-fade-in   { animation: fadeIn 0.15s ease-out; }
+.animate-scale-up  { animation: scaleUp 0.15s ease-out; }
+.animate-live-pulse{ animation: pulse 2s ease-in-out infinite; }
+
+/* Loading shimmer */
+.shimmer {
+  background: linear-gradient(90deg,
+    hsl(0 0% 44%) 0%,
+    hsl(0 0% 65%) 50%,
+    hsl(0 0% 44%) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LIVE INDICATOR — the only animated element in the system
+───────────────────────────────────────────────────────────────────────── */
+.live-dot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: live-ping 1.4s ease-out infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   FORM INPUTS
+   .input and .input-field are identical — both are valid across the app.
+   .textarea is .input with resize disabled and a min height.
+───────────────────────────────────────────────────────────────────────── */
+.input,
+.input-field {
+  @apply w-full bg-[#111111] border border-border rounded-lg px-4 py-3 text-sm text-foreground
+         placeholder:text-muted-foreground/40
+         focus:outline-none focus:border-primary/40 focus:ring-0
+         transition-colors duration-150;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.input:focus,
+.input-field:focus {
+  box-shadow: 0 0 0 3px hsl(73 92% 56% / 0.10);
+}
+
+/* Select needs an arrow since we strip appearance */
+select.input,
+select.input-field {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23707070' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.textarea {
+  @apply input resize-none;
+  min-height: 180px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TIER BADGES — subdued, not decorative
+───────────────────────────────────────────────────────────────────────── */
+.badge-micro      { @apply text-[#525252]  bg-[#1c1c1c] border border-[#2a2a2a]; }
+.badge-small      { @apply text-teal-400   bg-teal-950  border border-teal-900;  }
+.badge-medium     { @apply text-blue-400   bg-blue-950  border border-blue-900;  }
+.badge-large      { @apply text-violet-400 bg-violet-950 border border-violet-900; }
+.badge-enterprise { @apply text-[#CBF43A]  bg-[#1c2010] border border-[#334010]; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SCROLLBAR — invisible until needed
+───────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: hsl(var(--border)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SELECTION
+───────────────────────────────────────────────────────────────────────── */
+::selection { background: hsl(73 92% 56% / 0.25); }
