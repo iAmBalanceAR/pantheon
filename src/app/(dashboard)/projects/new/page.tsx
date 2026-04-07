@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, Zap, LayoutTemplate, AlignLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -80,7 +80,7 @@ function CreationModal({ step, error }: { step: number; error: string | null }) 
 
           <div className="space-y-1.5">
             {CREATION_PHASES.map((p, i) => {
-              const isDone    = i < step
+              const isDone    = step > i
               const isCurrent = i === step && !error
               const isFuture  = i > step
               return (
@@ -144,7 +144,7 @@ function BriefCard({
 }: {
   title: string
   description?: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <div className="p-5 rounded-2xl border border-border bg-[#0f0f0f] space-y-3">
@@ -193,7 +193,7 @@ export default function NewProjectPage() {
     })
   }, [])
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault()
     if (!effectiveSpec || loading) return
     setLoading(true)
