@@ -414,7 +414,7 @@ export default function NewProjectPage() {
 
                 <BriefCard
                   title="Stack & platform"
-                  description="Tap everything that applies. Unclear is OK — leave blank or choose "No preference yet.""
+                  description='Tap everything that applies. Unclear is OK — leave blank or choose "No preference yet."'
                 >
                   <div className="flex flex-wrap gap-2">
                     {STACK_OPTIONS.map(opt => {
