@@ -560,7 +560,7 @@ export default function NewProjectPage() {
                           key={i}
                           className={cn(
                             'w-3 h-0.5 rounded-full transition-all duration-200',
-                            i <= tierIndex ? tierTextColor.replace('text-', 'bg-') : 'bg-[#252525]',
+                            tierIndex >= i ? tierTextColor.replace('text-', 'bg-') : 'bg-[#252525]',
                           )}
                         />
                       ))}
