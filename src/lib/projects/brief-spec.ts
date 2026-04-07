@@ -45,7 +45,7 @@ export const TEAM_BEHAVIOR_OPTIONS: LabeledToggle[] = [
   { id: 'review-thorough', label: 'Favor thorough review over raw speed', hint: 'Extra scrutiny on changes' },
   { id: 'ask-architecture', label: 'Flag major architecture decisions for review', hint: 'Before big restructures' },
   { id: 'explain-chat', label: 'Prefer clear explanations in team chat', hint: 'Readable reasoning' },
-  { id: 'cut-scope', label: 'It's OK to trim scope to ship a solid v1', hint: 'MVP mindset' },
+  { id: 'cut-scope', label: "It's OK to trim scope to ship a solid v1", hint: 'MVP mindset' },
   { id: 'document', label: 'Bias toward documentation in-repo', hint: 'README, ADRs where useful' },
   { id: 'test-heavy', label: 'Emphasize tests for critical paths', hint: 'When in doubt, add coverage' },
 ]
